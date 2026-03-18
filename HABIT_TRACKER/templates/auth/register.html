@@ -4,7 +4,7 @@
   <div class="card shadow p-4" style="width: 100%; max-width: 450px">
     <h3 class="text-center mb-4">Register</h3>
 
-    <form method="POST" action="/register">
+    <form method="POST" action="{{ url_for('register') }}">
       <div class="mb-3">
         <label class="form-label">Username</label>
         <input type="text" class="form-control" name="username" required />
@@ -24,7 +24,7 @@
           required
           minlength="8"
           pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
-          title="At least 8 chars, 1 uppercase, 1 lowercase, 1 number"
+          title="At least 8 chars, 1 uppercase, 1 lowercase, 1 number 1 special character"
         />
       </div>
 
@@ -37,7 +37,7 @@
           required
         />
       </div>
-      <div class="form-text ">
+      <div class="form-text">
         Password must be at least 8 characters, include uppercase, lowercase,
         number and special character.
       </div>
