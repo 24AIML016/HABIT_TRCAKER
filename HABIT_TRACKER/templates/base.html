@@ -19,6 +19,7 @@
       <div style="display:flex; align-items:center; gap:0.8rem;">
         {% if session.get('user_id') %}
           <a href="{{ url_for('dashboard') }}" class="nav-link">Dashboard</a>
+          <a href="{{ url_for('statistics') }}" class="nav-link">Statistics</a>
           <div class="user-badge">
             <div class="user-avatar">{{ user.username[0].upper() if user else '?' }}</div>
             <span class="user-name">{{ user.username if user else '' }}</span>

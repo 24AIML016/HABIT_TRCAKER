@@ -2,7 +2,9 @@ from flask import Flask, flash, render_template, request, redirect, url_for, ses
 from models import db, User, Habit, HabitCompletion
 from datetime import date, timedelta
 from functools import wraps
+from collections import defaultdict
 import os
+import calendar
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///habitu.db"
@@ -228,6 +230,129 @@ def delete_habit(habit_id):
     db.session.commit()
     flash(f'Habit "{name}" deleted.', "info")
     return redirect(url_for("dashboard"))
+
+
+# ── STATISTICS PAGE ───────────────────────────────────────────
+@app.route("/statistics")
+@login_required
+def statistics():
+    user = get_current_user()
+    habits = Habit.query.filter_by(user_id=user.id).order_by(Habit.created_at.desc()).all()
+    return render_template("statistics.html", user=user, habits=habits)
+
+
+# ── STATISTICS API ────────────────────────────────────────────
+@app.route("/api/stats")
+@login_required
+def api_stats():
+    user = get_current_user()
+    habits = Habit.query.filter_by(user_id=user.id).all()
+    today = date.today()
+
+    # 1. Weekly completions (last 7 days)
+    weekly_labels = []
+    weekly_counts = []
+    for i in range(6, -1, -1):
+        d = today - timedelta(days=i)
+        count = sum(
+            1 for h in habits
+            if any(c.completed_date == d for c in h.completions)
+        )
+        weekly_labels.append(d.strftime("%a"))
+        weekly_counts.append(count)
+
+    # 2. Monthly completions (last 30 days)
+    monthly_labels = []
+    monthly_counts = []
+    for i in range(29, -1, -1):
+        d = today - timedelta(days=i)
+        count = sum(
+            1 for h in habits
+            if any(c.completed_date == d for c in h.completions)
+        )
+        monthly_labels.append(d.strftime("%d %b"))
+        monthly_counts.append(count)
+
+    # 3. Per-habit completion rate (all time)
+    habit_names = []
+    habit_rates = []
+    habit_colors = []
+    habit_streaks = []
+    for h in habits:
+        habit_names.append(f"{h.icon} {h.name}")
+        habit_colors.append(h.color)
+        habit_streaks.append(h.streak)
+        days_since = max(1, (today - h.created_at.date()).days + 1)
+        rate = min(100, int(h.total_completions / days_since * 100))
+        habit_rates.append(rate)
+
+    # 4. Completion heatmap (last 12 weeks = 84 days)
+    heatmap = []
+    for i in range(83, -1, -1):
+        d = today - timedelta(days=i)
+        count = sum(
+            1 for h in habits
+            if any(c.completed_date == d for c in h.completions)
+        )
+        total = len(habits) if len(habits) > 0 else 1
+        heatmap.append({
+            "date": d.isoformat(),
+            "day": d.strftime("%a"),
+            "label": d.strftime("%b %d"),
+            "count": count,
+            "total": total,
+            "pct": int(count / total * 100)
+        })
+
+    # 5. Overall summary
+    total_completions = sum(h.total_completions for h in habits)
+    total_habits = len(habits)
+    completed_today = sum(1 for h in habits if h.completed_today)
+    best_streak = max((h.streak for h in habits), default=0)
+    avg_daily = 0
+    if total_habits > 0:
+        last_30_completions = sum(
+            1 for h in habits
+            for c in h.completions
+            if (today - c.completed_date).days < 30
+        )
+        avg_daily = round(last_30_completions / 30, 1)
+
+    # 6. Day-of-week averages
+    dow_counts = defaultdict(list)
+    for i in range(27, -1, -1):
+        d = today - timedelta(days=i)
+        count = sum(
+            1 for h in habits
+            if any(c.completed_date == d for c in h.completions)
+        )
+        dow_counts[d.strftime("%a")].append(count)
+
+    dow_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    dow_avgs = [
+        round(sum(dow_counts.get(d, [0])) / max(len(dow_counts.get(d, [1])), 1), 1)
+        for d in dow_order
+    ]
+
+    return jsonify({
+        "weekly": {"labels": weekly_labels, "data": weekly_counts},
+        "monthly": {"labels": monthly_labels, "data": monthly_counts},
+        "habits": {
+            "names": habit_names,
+            "rates": habit_rates,
+            "colors": habit_colors,
+            "streaks": habit_streaks
+        },
+        "heatmap": heatmap,
+        "summary": {
+            "total_habits": total_habits,
+            "completed_today": completed_today,
+            "total_completions": total_completions,
+            "best_streak": best_streak,
+            "avg_daily": avg_daily
+        },
+        "dow": {"labels": dow_order, "data": dow_avgs}
+    })
 
 
 # ── LOGOUT ────────────────────────────────────────────────────

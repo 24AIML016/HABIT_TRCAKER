@@ -1,0 +1,473 @@
+{% extends "base.html" %}
+{% block title %}Statistics{% endblock %}
+
+{% block content %}
+<div class="statistics-page">
+
+  <!-- ═══ PAGE HEADER ═══ -->
+  <div class="stats-page-header">
+    <div>
+      <h1 class="stats-page-title">📊 Statistics</h1>
+      <p class="stats-page-subtitle">Deep dive into your habit performance</p>
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="btn-back-dash">← Dashboard</a>
+  </div>
+
+  <!-- ═══ SUMMARY CARDS ═══ -->
+  <div class="summary-cards" id="summaryCards">
+    <div class="summary-card summary-card-purple">
+      <div class="summary-card-icon">📋</div>
+      <div class="summary-card-value" id="sumTotalHabits">—</div>
+      <div class="summary-card-label">Total Habits</div>
+    </div>
+    <div class="summary-card summary-card-green">
+      <div class="summary-card-icon">✅</div>
+      <div class="summary-card-value" id="sumCompletedToday">—</div>
+      <div class="summary-card-label">Done Today</div>
+    </div>
+    <div class="summary-card summary-card-orange">
+      <div class="summary-card-icon">🔥</div>
+      <div class="summary-card-value" id="sumBestStreak">—</div>
+      <div class="summary-card-label">Best Streak</div>
+    </div>
+    <div class="summary-card summary-card-teal">
+      <div class="summary-card-icon">🏆</div>
+      <div class="summary-card-value" id="sumTotalCompletions">—</div>
+      <div class="summary-card-label">Total Completions</div>
+    </div>
+    <div class="summary-card summary-card-pink">
+      <div class="summary-card-icon">📈</div>
+      <div class="summary-card-value" id="sumAvgDaily">—</div>
+      <div class="summary-card-label">Avg. Daily (30d)</div>
+    </div>
+  </div>
+
+  <!-- ═══ CHARTS GRID ═══ -->
+  <div class="charts-grid">
+
+    <!-- Weekly Completions -->
+    <div class="chart-card chart-card-wide" id="weeklyChartCard">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">📅 Weekly Completions</h3>
+        <span class="chart-card-badge">Last 7 days</span>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="weeklyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Monthly Trend -->
+    <div class="chart-card chart-card-wide" id="monthlyChartCard">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">📆 Monthly Trend</h3>
+        <span class="chart-card-badge">Last 30 days</span>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="monthlyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Per-Habit Performance -->
+    <div class="chart-card" id="habitChartCard">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">🎯 Habit Performance</h3>
+        <span class="chart-card-badge">Completion Rate</span>
+      </div>
+      <div class="chart-canvas-wrap chart-canvas-tall">
+        <canvas id="habitChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Day of Week -->
+    <div class="chart-card" id="dowChartCard">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">🗓️ Day of Week</h3>
+        <span class="chart-card-badge">Avg. habits/day</span>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="dowChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Streaks Leaderboard -->
+    <div class="chart-card" id="streaksChartCard">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">🔥 Streak Leaderboard</h3>
+        <span class="chart-card-badge">Current streaks</span>
+      </div>
+      <div class="chart-canvas-wrap chart-canvas-tall">
+        <canvas id="streaksChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Heatmap -->
+    <div class="chart-card chart-card-full" id="heatmapCard">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">🟩 Activity Heatmap</h3>
+        <span class="chart-card-badge">Last 12 weeks</span>
+      </div>
+      <div class="heatmap-container" id="heatmapContainer">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ LOADING OVERLAY ═══ -->
+  <div class="stats-loading" id="statsLoading">
+    <div class="stats-spinner"></div>
+    <p>Loading statistics…</p>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  // ── Chart.js global defaults ──
+  Chart.defaults.color = '#8b8ba3';
+  Chart.defaults.borderColor = 'rgba(108,92,231,0.1)';
+  Chart.defaults.font.family = "'Inter', sans-serif";
+  Chart.defaults.font.size = 12;
+  Chart.defaults.plugins.legend.display = false;
+  Chart.defaults.responsive = true;
+  Chart.defaults.maintainAspectRatio = false;
+
+  const gradientPurple = (ctx) => {
+    const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+    g.addColorStop(0, 'rgba(108,92,231,0.35)');
+    g.addColorStop(1, 'rgba(108,92,231,0.02)');
+    return g;
+  };
+
+  const gradientTeal = (ctx) => {
+    const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, ctx.chart.height);
+    g.addColorStop(0, 'rgba(0,206,201,0.3)');
+    g.addColorStop(1, 'rgba(0,206,201,0.02)');
+    return g;
+  };
+
+  // ── Fetch stats ──
+  fetch('/api/stats')
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('statsLoading').style.display = 'none';
+
+      // Summary cards
+      animateValue('sumTotalHabits', data.summary.total_habits);
+      animateValue('sumCompletedToday', data.summary.completed_today);
+      animateValue('sumBestStreak', data.summary.best_streak);
+      animateValue('sumTotalCompletions', data.summary.total_completions);
+      document.getElementById('sumAvgDaily').textContent = data.summary.avg_daily;
+
+      // 1. Weekly Chart (bar)
+      new Chart(document.getElementById('weeklyChart'), {
+        type: 'bar',
+        data: {
+          labels: data.weekly.labels,
+          datasets: [{
+            data: data.weekly.data,
+            backgroundColor: (ctx) => {
+              const g = ctx.chart.ctx.createLinearGradient(0, ctx.chart.chartArea?.top || 0, 0, ctx.chart.chartArea?.bottom || 300);
+              g.addColorStop(0, '#6c5ce7');
+              g.addColorStop(1, '#a29bfe');
+              return g;
+            },
+            borderRadius: 8,
+            borderSkipped: false,
+            barPercentage: 0.6,
+            categoryPercentage: 0.7
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, padding: 8 },
+              grid: { color: 'rgba(108,92,231,0.06)' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: { padding: 8 }
+            }
+          },
+          plugins: {
+            tooltip: {
+              backgroundColor: '#1a1a2e',
+              borderColor: 'rgba(108,92,231,0.3)',
+              borderWidth: 1,
+              cornerRadius: 10,
+              padding: 12,
+              titleFont: { weight: '600' },
+              callbacks: {
+                label: (ctx) => `${ctx.parsed.y} habit${ctx.parsed.y !== 1 ? 's' : ''} completed`
+              }
+            }
+          },
+          animation: { duration: 1200, easing: 'easeOutQuart' }
+        }
+      });
+
+      // 2. Monthly Chart (line)
+      new Chart(document.getElementById('monthlyChart'), {
+        type: 'line',
+        data: {
+          labels: data.monthly.labels,
+          datasets: [{
+            data: data.monthly.data,
+            borderColor: '#6c5ce7',
+            backgroundColor: gradientPurple,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: '#6c5ce7',
+            pointHoverBorderColor: '#fff',
+            pointHoverBorderWidth: 2,
+            borderWidth: 2.5
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { stepSize: 1, padding: 8 },
+              grid: { color: 'rgba(108,92,231,0.06)' }
+            },
+            x: {
+              grid: { display: false },
+              ticks: {
+                maxTicksLimit: 10,
+                padding: 8
+              }
+            }
+          },
+          interaction: { intersect: false, mode: 'index' },
+          plugins: {
+            tooltip: {
+              backgroundColor: '#1a1a2e',
+              borderColor: 'rgba(108,92,231,0.3)',
+              borderWidth: 1,
+              cornerRadius: 10,
+              padding: 12
+            }
+          },
+          animation: { duration: 1400, easing: 'easeOutQuart' }
+        }
+      });
+
+      // 3. Habit Performance (horizontal bar)
+      if (data.habits.names.length > 0) {
+        new Chart(document.getElementById('habitChart'), {
+          type: 'bar',
+          data: {
+            labels: data.habits.names,
+            datasets: [{
+              data: data.habits.rates,
+              backgroundColor: data.habits.colors.map(c => c + '99'),
+              borderColor: data.habits.colors,
+              borderWidth: 1.5,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.7
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            scales: {
+              x: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { callback: v => v + '%', padding: 8 },
+                grid: { color: 'rgba(108,92,231,0.06)' }
+              },
+              y: {
+                grid: { display: false },
+                ticks: { padding: 8, font: { size: 11 } }
+              }
+            },
+            plugins: {
+              tooltip: {
+                backgroundColor: '#1a1a2e',
+                borderColor: 'rgba(108,92,231,0.3)',
+                borderWidth: 1,
+                cornerRadius: 10,
+                padding: 12,
+                callbacks: {
+                  label: (ctx) => `${ctx.parsed.x}% completion rate`
+                }
+              }
+            },
+            animation: { duration: 1000, easing: 'easeOutQuart' }
+          }
+        });
+      } else {
+        document.getElementById('habitChartCard').innerHTML += '<div class="chart-empty">Add habits to see performance</div>';
+      }
+
+      // 4. Day of Week (radar)
+      new Chart(document.getElementById('dowChart'), {
+        type: 'radar',
+        data: {
+          labels: data.dow.labels,
+          datasets: [{
+            data: data.dow.data,
+            borderColor: '#00cec9',
+            backgroundColor: 'rgba(0,206,201,0.15)',
+            pointBackgroundColor: '#00cec9',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 1.5,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            borderWidth: 2
+          }]
+        },
+        options: {
+          scales: {
+            r: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1,
+                backdropColor: 'transparent',
+                color: '#5a5a7a'
+              },
+              grid: { color: 'rgba(108,92,231,0.1)' },
+              angleLines: { color: 'rgba(108,92,231,0.1)' },
+              pointLabels: {
+                color: '#8b8ba3',
+                font: { size: 12, weight: '600' }
+              }
+            }
+          },
+          plugins: {
+            tooltip: {
+              backgroundColor: '#1a1a2e',
+              borderColor: 'rgba(0,206,201,0.3)',
+              borderWidth: 1,
+              cornerRadius: 10,
+              padding: 12,
+              callbacks: {
+                label: (ctx) => `Avg: ${ctx.parsed.r} habits`
+              }
+            }
+          },
+          animation: { duration: 1200, easing: 'easeOutQuart' }
+        }
+      });
+
+      // 5. Streaks (horizontal bar)
+      if (data.habits.names.length > 0) {
+        new Chart(document.getElementById('streaksChart'), {
+          type: 'bar',
+          data: {
+            labels: data.habits.names,
+            datasets: [{
+              data: data.habits.streaks,
+              backgroundColor: (ctx) => {
+                const val = data.habits.streaks[ctx.dataIndex];
+                if (val >= 7) return 'rgba(253,203,110,0.7)';
+                if (val >= 3) return 'rgba(0,184,148,0.6)';
+                return 'rgba(108,92,231,0.4)';
+              },
+              borderColor: (ctx) => {
+                const val = data.habits.streaks[ctx.dataIndex];
+                if (val >= 7) return '#fdcb6e';
+                if (val >= 3) return '#00b894';
+                return '#6c5ce7';
+              },
+              borderWidth: 1.5,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.7
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            scales: {
+              x: {
+                beginAtZero: true,
+                ticks: {
+                  stepSize: 1,
+                  padding: 8,
+                  callback: v => v + 'd'
+                },
+                grid: { color: 'rgba(108,92,231,0.06)' }
+              },
+              y: {
+                grid: { display: false },
+                ticks: { padding: 8, font: { size: 11 } }
+              }
+            },
+            plugins: {
+              tooltip: {
+                backgroundColor: '#1a1a2e',
+                borderColor: 'rgba(253,203,110,0.3)',
+                borderWidth: 1,
+                cornerRadius: 10,
+                padding: 12,
+                callbacks: {
+                  label: (ctx) => `${ctx.parsed.x} day${ctx.parsed.x !== 1 ? 's' : ''} streak`
+                }
+              }
+            },
+            animation: { duration: 1000, easing: 'easeOutQuart' }
+          }
+        });
+      } else {
+        document.getElementById('streaksChartCard').innerHTML += '<div class="chart-empty">Add habits to see streaks</div>';
+      }
+
+      // 6. Heatmap
+      renderHeatmap(data.heatmap, data.summary.total_habits);
+    })
+    .catch(err => {
+      console.error('Stats error:', err);
+      document.getElementById('statsLoading').innerHTML = '<p style="color:#e17055;">Failed to load statistics.</p>';
+    });
+
+  // ── Animate counter ──
+  function animateValue(id, target) {
+    const el = document.getElementById(id);
+    if (target === 0) { el.textContent = '0'; return; }
+    let current = 0;
+    const increment = Math.max(1, Math.floor(target / 25));
+    const timer = setInterval(() => {
+      current += increment;
+      if (current >= target) { current = target; clearInterval(timer); }
+      el.textContent = current;
+    }, 30);
+  }
+
+  // ── Heatmap render ──
+  function renderHeatmap(heatmap, totalHabits) {
+    const container = document.getElementById('heatmapContainer');
+    if (!heatmap.length || totalHabits === 0) {
+      container.innerHTML = '<div class="chart-empty">Add habits and track them to see your heatmap</div>';
+      return;
+    }
+
+    let html = '<div class="heatmap-grid">';
+    heatmap.forEach((cell, i) => {
+      const intensity = cell.pct === 0 ? 0 : cell.pct <= 25 ? 1 : cell.pct <= 50 ? 2 : cell.pct <= 75 ? 3 : 4;
+      html += `<div class="heatmap-cell heatmap-level-${intensity}"
+        title="${cell.label}: ${cell.count}/${cell.total} habits (${cell.pct}%)"
+        style="animation-delay: ${i * 8}ms"></div>`;
+    });
+    html += '</div>';
+
+    // Legend
+    html += '<div class="heatmap-legend">';
+    html += '<span class="heatmap-legend-label">Less</span>';
+    for (let i = 0; i <= 4; i++) {
+      html += `<div class="heatmap-cell heatmap-legend-cell heatmap-level-${i}"></div>`;
+    }
+    html += '<span class="heatmap-legend-label">More</span>';
+    html += '</div>';
+
+    container.innerHTML = html;
+  }
+})();
+</script>
+{% endblock %}
